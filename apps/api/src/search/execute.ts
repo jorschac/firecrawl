@@ -1,6 +1,23 @@
 import type { Logger } from "winston";
+import {
+  discoverTools,
+  isAlexandriaSource,
+  usOnlyToolsWarning,
+} from "./alexandria";
+import {
+  AUTO_TOOLS_WAIT_MS,
+  inferToolIntent,
+  verifyTools,
+} from "./tool-intent";
 import { search } from "./v2";
-import { SearchV2Response } from "../lib/entities";
+import {
+  SearchV2Response,
+  SearchResultType,
+  SearchResultCountsBySource,
+  SearchResultCategoriesBySource,
+  countSearchResultsBySource,
+  collectSearchResultCategories,
+} from "../lib/entities";
 import {
   buildSearchQuery,
   getCategoryFromUrl,
@@ -14,6 +31,13 @@ import {
   calculateScrapeCredits,
 } from "./scrape";
 import { searchDeveloperCategory, wantsDeveloperCategory } from "./developer";
+import { searchGovCategory, wantsGovCategory } from "./gov";
+import { removeExplicitResults } from "./safe-search";
+import {
+  matchesQueryOperators,
+  planOperatorQuery,
+  siteHostnames,
+} from "./operators";
 import {
   highlightsEnvReady,
   runIndexedSearchHighlights,
@@ -26,6 +50,7 @@ import { checkUrlsAgainstThreatPolicy } from "../lib/threat-protection/request";
 import { calculateThreatScanCredits } from "../lib/scrape-billing";
 import { config } from "../config";
 import { logger as rootLogger } from "../lib/logger";
+import { isUsOnly } from "../lib/us-only";
 
 interface SearchOptions {
   query: string;
@@ -43,6 +68,12 @@ interface SearchOptions {
   enterprise?: ("default" | "anon" | "zdr")[];
   scrapeOptions?: ScrapeOptions;
   highlights?: boolean;
+  domainTools?: boolean;
+  toolDetail?: "compact" | "summary" | "full";
+  /** Rewrite the query before tool discovery. */
+  inferToolQuery?: boolean;
+  /** Add compact tools to a search that did not ask for them, when the query needs them. */
+  autoTools?: boolean;
   timeout: number;
 }
 
@@ -63,11 +94,22 @@ interface SearchContext {
   keylessReserved?: boolean;
   /** Effective threat protection policy; blocked domains are removed from results entirely. */
   threatProtectionPolicy?: ThreatProtectionPolicy | null;
+  /** Set when the request legitimately opted out of Safe Mode at the controller. */
+  safeModeBypassed?: boolean;
 }
 
 interface SearchExecuteResult {
+  /** Parts of the search a US-only team could not be served. */
+  usOnlyWarning?: string;
+  toolsWarning?: string;
+  /** The tools were added automatically, not requested. */
+  toolsAuto?: boolean;
+  toolsUnavailable?: boolean;
   response: SearchV2Response;
   totalResultsCount: number;
+  resultCountsBySource: SearchResultCountsBySource;
+  resultCategories: SearchResultCategoriesBySource;
+  indexResultsCount: number;
   searchCredits: number;
   scrapeCredits: number;
   totalCredits: number;
@@ -93,12 +135,85 @@ export async function executeSearch(
   } = context;
 
   const num_results_buffer = Math.floor(limit * 2);
+  const usOnly = isUsOnly(flags);
+  const usOnlyWarnings: string[] = [];
 
   logger.info("Searching for results");
 
-  const searchTypes = [...new Set(sources.map((s: any) => s.type))];
+  const wantsTools = sources.some(isAlexandriaSource);
+  const toolsAllowed =
+    !zeroDataRetention &&
+    !options.enterprise?.some(mode => mode === "zdr" || mode === "anon");
+  const toolIntent =
+    toolsAllowed &&
+    (wantsTools ? options.inferToolQuery : options.autoTools) &&
+    query.trim()
+      ? inferToolIntent(query, logger)
+      : null;
+  // Tools found only through the rewrite or inferred domains are added after Jev confirms they fit the query.
+  const extraDiscovery = toolIntent
+    ? toolIntent
+        .then(async intent => {
+          if (!wantsTools && !intent.needsTools) return null;
+          const found = await discoverTools(
+            {
+              toolDetail: options.toolDetail ?? "compact",
+              teamId,
+              connectors: flags?.exchangeRetrieve === true,
+              usOnly,
+              limit,
+              queries: wantsTools
+                ? intent.toolQueries
+                : [query, ...intent.toolQueries],
+              urls:
+                options.domainTools === false
+                  ? []
+                  : intent.domains.map(domain => `https://${domain}/`),
+              timeoutMs: Math.min(options.timeout, 3000),
+            },
+            logger,
+          );
+          return {
+            items: await verifyTools(query, found.items, logger),
+            usOnlyExcluded: found.usOnlyExcluded ?? 0,
+          };
+        })
+        .catch(() => null)
+    : null;
+  let resolveToolUrls: (urls: string[]) => void = () => {};
+  const baseDiscovery =
+    toolsAllowed && (wantsTools || options.domainTools)
+      ? discoverTools(
+          {
+            toolDetail: options.toolDetail ?? "compact",
+            teamId,
+            connectors: flags?.exchangeRetrieve === true,
+            usOnly,
+            limit,
+            queries: wantsTools ? [query] : undefined,
+            urls:
+              options.domainTools === false
+                ? []
+                : new Promise<string[]>(resolve => {
+                    resolveToolUrls = resolve;
+                  }),
+            timeoutMs: options.timeout,
+          },
+          logger,
+        )
+      : null;
+  const searchTypes = [
+    ...new Set(
+      sources
+        .filter(source => !isAlexandriaSource(source))
+        .map(source => source.type as SearchResultType),
+    ),
+  ];
+  const operatorPlan = planOperatorQuery(query);
+  const { operators } = operatorPlan;
+  const nonEmpty = (list: string[]) => (list.length > 0 ? list : undefined);
   const { query: searchQuery, categoryMap } = buildSearchQuery(
-    query,
+    operatorPlan.query,
     categories,
     {
       includeDomains: options.includeDomains,
@@ -106,34 +221,78 @@ export async function executeSearch(
     },
   );
 
-  const developerResults = wantsDeveloperCategory(categories)
-    ? searchDeveloperCategory(
-        { query, limit, teamId, timeout: options.timeout },
+  // The developer and gov categories are each exclusive (schema-enforced) and
+  // are served from their own index instead of the web SERP.
+  const indexCategorySearch = wantsDeveloperCategory(categories)
+    ? searchDeveloperCategory
+    : wantsGovCategory(categories)
+      ? searchGovCategory
+      : null;
+  const indexResultsPromise = indexCategorySearch
+    ? indexCategorySearch(
+        {
+          query,
+          limit,
+          teamId,
+          timeout: options.timeout,
+          zeroDataRetention:
+            zeroDataRetention === true ||
+            options.enterprise?.some(
+              mode => mode === "zdr" || mode === "anon",
+            ) === true,
+          ...(usOnly ? { usOnly, warnings: usOnlyWarnings } : {}),
+        },
         logger,
       )
     : null;
 
-  const searchResponse = (await search({
-    query: searchQuery,
-    logger,
-    advanced: false,
-    num_results: num_results_buffer,
-    tbs: options.tbs,
-    filter: options.filter,
-    lang: options.lang,
-    country: options.country,
-    location: options.location,
-    safe: options.safe,
-    type: searchTypes,
-    enterprise: options.enterprise,
-  })) as SearchV2Response;
-
-  if (developerResults) {
-    const developer = await developerResults;
-    if (developer.length > 0) {
-      searchResponse.developer = developer;
-    }
-  }
+  const searchResponse =
+    (wantsTools && !searchTypes.length) || indexResultsPromise !== null
+      ? ({} as SearchV2Response)
+      : ((await search({
+          query: searchQuery,
+          logger,
+          requestId: context.requestId,
+          advanced: false,
+          num_results: operatorPlan.relaxed
+            ? Math.max(num_results_buffer, Math.min(limit * 5, 100))
+            : num_results_buffer,
+          tbs: options.tbs,
+          filter: options.filter,
+          lang: options.lang,
+          country: options.country,
+          location: options.location,
+          safe: options.safe,
+          type: searchTypes,
+          enterprise: options.enterprise,
+          includeDomains: options.includeDomains?.length
+            ? options.includeDomains
+            : nonEmpty(siteHostnames(operators.sites)),
+          excludeDomains: nonEmpty([
+            ...(options.excludeDomains ?? []),
+            ...operators.excludedSites.filter(site => !site.includes("/")),
+          ]),
+          usOnly,
+        })) as SearchV2Response);
+  const keepOperatorMatches = <
+    T extends { url?: string; title?: string; position?: number },
+  >(
+    results: T[] | undefined,
+  ): T[] | undefined => {
+    const kept = results?.filter(result =>
+      matchesQueryOperators(result, operatorPlan),
+    );
+    return kept?.length === results?.length
+      ? results
+      : kept?.map((result, index) => ({ ...result, position: index + 1 }));
+  };
+  searchResponse.web = keepOperatorMatches(searchResponse.web);
+  searchResponse.news = keepOperatorMatches(searchResponse.news);
+  searchResponse.images = keepOperatorMatches(searchResponse.images);
+  let indexResults =
+    keepOperatorMatches(
+      indexResultsPromise ? await indexResultsPromise : undefined,
+    ) ?? [];
 
   // Threat protection: remove blocked results entirely — before
   // slicing/counting, before scraping, and before returning. Checks are
@@ -147,7 +306,7 @@ export async function executeSearch(
       ...(searchResponse.web ?? []).map(x => x.url),
       ...(searchResponse.news ?? []).map(x => x.url),
       ...(searchResponse.images ?? []).map(x => x.url),
-      ...(searchResponse.developer ?? []).map(x => x.url),
+      ...indexResults.map(x => x.url),
     ].filter((x): x is string => !!x);
 
     if (urlsToCheck.length > 0) {
@@ -173,11 +332,26 @@ export async function executeSearch(
           isAllowed(x.url),
         );
       }
-      if (searchResponse.developer) {
-        searchResponse.developer = searchResponse.developer.filter(x =>
-          isAllowed(x.url),
-        );
-      }
+      indexResults = indexResults.filter(x => isAllowed(x.url));
+    }
+  }
+
+  // The filter shares results with TypeSafe, so zero data retention and
+  // anonymous requests skip it.
+  if (
+    options.safe &&
+    !zeroDataRetention &&
+    !options.enterprise?.some(mode => mode === "zdr" || mode === "anon")
+  ) {
+    // Index results skip the SERP and its provider-side safe search, so they
+    // are filtered from a response of their own before they are counted,
+    // scraped or returned.
+    const safeTarget: SearchV2Response = indexCategorySearch
+      ? { web: indexResults }
+      : searchResponse;
+    await removeExplicitResults(safeTarget, limit, logger, teamId);
+    if (safeTarget !== searchResponse) {
+      indexResults = safeTarget.web ?? [];
     }
   }
 
@@ -220,18 +394,109 @@ export async function executeSearch(
     totalResultsCount += searchResponse.news.length;
   }
 
-  if (searchResponse.developer && searchResponse.developer.length > 0) {
-    totalResultsCount += searchResponse.developer.length;
+  const indexResultsCount = indexResults.length;
+  totalResultsCount += indexResultsCount;
+  let toolsWarning: string | undefined;
+  let toolsUnavailable = false;
+  let toolsAuto = false;
+
+  const waitForExtra = async (alongside?: Promise<unknown>) => {
+    if (!extraDiscovery) return null;
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<void>(resolve => {
+      timer = setTimeout(resolve, AUTO_TOOLS_WAIT_MS);
+      timer.unref();
+    });
+    try {
+      return await Promise.race([
+        extraDiscovery,
+        Promise.all([deadline, alongside]).then(() => null),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  if (baseDiscovery) {
+    resolveToolUrls(
+      [
+        ...(searchResponse.web ?? []),
+        ...(searchResponse.news ?? []),
+        ...indexResults,
+      ].flatMap(item => (item.url ? [item.url] : [])),
+    );
+    const [discovery, extra] = await Promise.all([
+      baseDiscovery,
+      waitForExtra(baseDiscovery),
+    ]);
+    const merged = new Map(
+      discovery.items.map(tool => [
+        `${tool.provider}/${tool.capability}`,
+        tool,
+      ]),
+    );
+    for (const tool of extra?.items ?? []) {
+      const key = `${tool.provider}/${tool.capability}`;
+      const previous = merged.get(key);
+      merged.set(
+        key,
+        previous && "matchedBy" in previous && "matchedBy" in tool
+          ? {
+              ...previous,
+              matchedBy: [
+                ...new Set([
+                  ...(previous.matchedBy ?? []),
+                  ...(tool.matchedBy ?? []),
+                ]),
+              ],
+              matchedUrls: [
+                ...new Set([
+                  ...(previous.matchedUrls ?? []),
+                  ...(tool.matchedUrls ?? []),
+                ]),
+              ],
+            }
+          : (previous ?? tool),
+      );
+    }
+    searchResponse.tools = [...merged.values()];
+    // Both legs can hide the same tools, so the larger count is reported.
+    const usOnlyExcluded = Math.max(
+      discovery.usOnlyExcluded ?? 0,
+      extra?.usOnlyExcluded ?? 0,
+    );
+    toolsWarning =
+      [
+        discovery.warning,
+        usOnlyExcluded > 0 ? usOnlyToolsWarning(usOnlyExcluded) : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined;
+    toolsUnavailable = discovery.unavailable === true && !extra?.items.length;
+  } else if (extraDiscovery) {
+    const extra = await waitForExtra();
+    if (extra?.items.length) {
+      searchResponse.tools = extra.items;
+      toolsAuto = true;
+    }
+    if (extra?.usOnlyExcluded) {
+      toolsWarning = usOnlyToolsWarning(extra.usOnlyExcluded);
+    }
   }
 
   const isZDR = options.enterprise?.includes("zdr");
   const creditsPerTenResults = isZDR ? 10 : 2;
+  // Gov index results are free; developer index results bill like web results.
+  const billableResultsCount =
+    indexCategorySearch === searchGovCategory
+      ? totalResultsCount - indexResultsCount
+      : totalResultsCount;
   // Threat protection scan fees ride on the search credits: they are part of
   // serving the search itself (every result domain is scanned before
   // filtering), so they bill against the same feature and show up in the
   // request's creditsUsed.
   const searchCredits =
-    Math.ceil(totalResultsCount / 10) * creditsPerTenResults +
+    Math.ceil(billableResultsCount / 10) * creditsPerTenResults +
     threatScanCredits;
   let scrapeCredits = 0;
 
@@ -239,7 +504,12 @@ export async function executeSearch(
     scrapeOptions?.formats && scrapeOptions.formats.length > 0;
 
   if (shouldScrape && scrapeOptions) {
-    const itemsToScrape = getItemsToScrape(searchResponse, flags, {
+    // Index results only become the web group at the end, so they are
+    // scraped from a response of their own.
+    const scrapeTarget: SearchV2Response = indexCategorySearch
+      ? { web: indexResults }
+      : searchResponse;
+    const itemsToScrape = getItemsToScrape(scrapeTarget, flags, {
       team_id: teamId,
       org_id: orgId ?? null,
       origin,
@@ -260,6 +530,7 @@ export async function executeSearch(
         agentIndexOnly: context.agentIndexOnly,
         keylessReserved: context.keylessReserved,
         threatProtectionPolicy: threatPolicy ?? null,
+        safeModeBypassed: context.safeModeBypassed ?? false,
       };
 
       const allDocsWithCostTracking = await scrapeSearchResults(
@@ -269,11 +540,10 @@ export async function executeSearch(
         flags,
       );
 
-      mergeScrapedContent(
-        searchResponse,
-        itemsToScrape,
-        allDocsWithCostTracking,
-      );
+      mergeScrapedContent(scrapeTarget, itemsToScrape, allDocsWithCostTracking);
+      if (scrapeTarget !== searchResponse) {
+        indexResults = scrapeTarget.web ?? [];
+      }
       scrapeCredits = calculateScrapeCredits(allDocsWithCostTracking);
     }
   }
@@ -321,6 +591,16 @@ export async function executeSearch(
     }
   }
 
+  if (indexResultsPromise !== null) {
+    // An index category is exclusive, so these are the only results: they ARE
+    // the web group. Threat filtering above may have removed entries, so
+    // renumber the survivors.
+    searchResponse.web = indexResults.map((result, index) => ({
+      ...result,
+      position: index + 1,
+    }));
+  }
+
   const scrapeFormats = scrapeOptions?.formats
     ? scrapeOptions.formats.map((f: any) =>
         typeof f === "string" ? f : f.type,
@@ -361,7 +641,21 @@ export async function executeSearch(
 
   return {
     response: searchResponse,
+    ...(usOnlyWarnings.length > 0
+      ? { usOnlyWarning: usOnlyWarnings.join(" ") }
+      : {}),
+    toolsWarning,
+    toolsUnavailable,
+    toolsAuto,
     totalResultsCount,
+    // Counted from the final response — after scraping and highlights — so it
+    // matches exactly what the client can address by position.
+    resultCountsBySource: countSearchResultsBySource(searchResponse),
+    // Read from the same final response, so a category is keyed by the position
+    // the client sees. Index hits replace the web group above and are
+    // renumbered there, so their positions here are the renumbered ones.
+    resultCategories: collectSearchResultCategories(searchResponse),
+    indexResultsCount,
     searchCredits,
     scrapeCredits,
     totalCredits: searchCredits + scrapeCredits,

@@ -29,7 +29,14 @@ import {
   useIndexNegativeCache,
   type IndexCacheEntry,
 } from "../../../../services/index-cache";
-import { indexLookupCounter } from "../../../../lib/index-cache-metrics";
+import {
+  indexLookupCounter,
+  indexPdfSupersedeCounter,
+} from "../../../../lib/index-cache-metrics";
+import {
+  cacheServiceConfigured,
+  checkFirePdfSupersedes,
+} from "../pdf/fire-pdf/cache-service";
 import {
   AgentIndexOnlyError,
   EngineError,
@@ -37,10 +44,14 @@ import {
   NoCachedDataError,
 } from "../../error";
 import {
+  getPDFBlocks,
+  getPDFMaxPages,
   getPDFPageMarkdown,
+  getPDFPageMarkers,
   shouldParsePDF,
 } from "../../../../controllers/v2/types";
 import { hasFormatOfType } from "../../../../lib/format-utils";
+import { hasCustomRequestContext } from "../../lib/request-context";
 
 export async function sendDocumentToIndex(meta: Meta, document: Document) {
   // Skip caching if screenshot format has custom viewport or quality settings
@@ -48,6 +59,15 @@ export async function sendDocumentToIndex(meta: Meta, document: Document) {
   const hasCustomScreenshotSettings =
     screenshotFormat?.viewport !== undefined ||
     screenshotFormat?.quality !== undefined;
+
+  // A PDF capped by maxPages is truncated, but one whose true page count
+  // fits under the cap is identical to an unlimited scrape and safe to cache.
+  const pdfMaxPages = getPDFMaxPages(meta.options.parsers);
+  const isTruncatedPdf =
+    pdfMaxPages !== undefined &&
+    document.metadata.contentType === "application/pdf" &&
+    (document.metadata.totalPages === undefined ||
+      document.metadata.totalPages > pdfMaxPages);
 
   const shouldCache =
     meta.options.storeInCache &&
@@ -59,29 +79,21 @@ export async function sendDocumentToIndex(meta: Meta, document: Document) {
     // every access must go through the Exchange and its ledger.
     meta.winnerEngine !== "exchange" &&
     !(meta.winnerEngine === "pdf" && !shouldParsePDF(meta.options.parsers)) &&
-    // Page-aware results are capability-specific and are not represented in
-    // the URL index schema yet. Do not write an entry that could later be
-    // served without its required pages payload.
+    // Page-aware and block-aware results are capability-specific and are not
+    // represented in the URL index schema yet. Do not write an entry that
+    // could later be served without its required pages/blocks payload.
+    // Marker-bearing markdown is mutated output — never index it either.
     !getPDFPageMarkdown(meta.options.parsers) &&
-    !meta.options.parsers?.some(parser => {
-      if (
-        typeof parser === "object" &&
-        parser !== null &&
-        "maxPages" in parser
-      ) {
-        return true;
-      }
-      return false;
-    }) &&
+    !getPDFBlocks(meta.options.parsers) &&
+    !getPDFPageMarkers(meta.options.parsers) &&
+    !isTruncatedPdf &&
     (meta.internalOptions.teamId === "sitemap" ||
       (meta.winnerEngine !== "fire-engine;tlsclient" &&
         meta.winnerEngine !== "fire-engine;tlsclient;stealth" &&
         meta.winnerEngine !== "fetch")) &&
     !meta.featureFlags.has("actions") &&
     !hasCustomScreenshotSettings &&
-    (meta.options.headers === undefined ||
-      Object.keys(meta.options.headers).length === 0) &&
-    meta.options.profile === undefined;
+    !hasCustomRequestContext(meta.options);
 
   if (!shouldCache) {
     return document;
@@ -115,7 +127,6 @@ export async function sendDocumentToIndex(meta: Meta, document: Document) {
             meta.rewrittenUrl ??
             meta.url,
           html: document.rawHtml!,
-          json: document.json,
           statusCode: document.metadata.statusCode,
           error: document.metadata.error,
           screenshot: document.screenshot,
@@ -131,6 +142,10 @@ export async function sendDocumentToIndex(meta: Meta, document: Document) {
           contentType: document.metadata.contentType,
           postprocessorsUsed: document.metadata.postprocessorsUsed,
           proxyUsed: document.metadata.proxyUsed,
+          ...(meta.firePdfCacheKey?.current !== undefined &&
+          document.metadata.contentType === "application/pdf"
+            ? { firePdfCacheKey: meta.firePdfCacheKey.current }
+            : {}),
         });
       } catch (error) {
         meta.logger.error("Failed to save document to index", {
@@ -549,6 +564,57 @@ export async function scrapeURLWithIndex(
     }
   }
 
+  // Check if returned PDF has a higher numPages than what the user's parsers[pdf].maxPages config allows.
+  let numPages = doc.pdfMetadata?.numPages ?? doc.numPages;
+  if (numPages !== undefined) {
+    let maxPages = getPDFMaxPages(meta.options.parsers);
+    if (maxPages !== undefined && numPages > maxPages) {
+      logLookup("debug", "hit", {
+        pdfMismatch: "cached_pdf_overflows_parsers_max_pages",
+      });
+      throw new IndexMissError();
+    }
+  }
+
+  // A cached image document is OCR output. The live path only OCRs images
+  // for requests that opted in with the image parser on a team with the
+  // flag, so serving that output to any other request would hand out what a
+  // fresh scrape refuses: report a miss and let the waterfall decide.
+  if (
+    doc.contentType?.startsWith("image/") &&
+    !(await meta.imageOcrEnabled())
+  ) {
+    logLookup("debug", "hit", { imageMismatch: "cached_ocr_not_requested" });
+    throw new IndexMissError();
+  }
+
+  // fire-pdf may have re-parsed this PDF since it was indexed (a refresh or a
+  // campaign). Only once a fresh entry exists is the index copy skipped, so
+  // the request lands on that entry without a parse and is re-indexed.
+  if (
+    config.INDEX_PDF_SUPERSEDE_CHECK &&
+    typeof doc.firePdfCacheKey === "string" &&
+    doc.contentType === "application/pdf" &&
+    !isCachedPdfBase64 &&
+    cacheServiceConfigured()
+  ) {
+    const result = await checkFirePdfSupersedes(
+      meta,
+      doc.firePdfCacheKey,
+      new Date(selectedRow.created_at),
+    );
+    indexPdfSupersedeCounter.inc({ result });
+    if (result === "superseded") {
+      // The DB path may have just written this id through to Dragonfly.
+      deleteCachedIndexEntry(variantKey, id, meta.logger).catch(() => {});
+      logLookup("debug", "hit", {
+        pdfSuperseded: true,
+        indexDocumentId: id,
+      });
+      throw new IndexMissError();
+    }
+  }
+
   logLookup("debug", "hit", {
     age: Date.now() - new Date(selectedRow.created_at).getTime(),
     status: selectedRow.status,
@@ -559,7 +625,6 @@ export async function scrapeURLWithIndex(
   return {
     url: doc.url,
     html: doc.html,
-    json: doc.json,
     statusCode: doc.statusCode,
     error: doc.error,
     screenshot: doc.screenshot,

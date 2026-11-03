@@ -12,6 +12,10 @@ from .v2.types import (
     # Document types
     Document,
     DocumentMetadata,
+    PdfBlockConfidence,
+    PdfBlockItem,
+    PdfPageBlocks,
+    PdfPage,
     
     # Scrape types
     ScrapeFormats,
@@ -56,6 +60,19 @@ from .v2.types import (
     SearchResultNews,
     SearchResultImages,
     SearchData,
+    DeveloperSearchType,
+    DeveloperSearchRequest,
+    DeveloperSearchLicenseDisclosure,
+    DeveloperSearchPassage,
+    DeveloperSearchResult,
+    DeveloperSearchRepoTypes,
+    DeveloperSearchRepoStatus,
+    DeveloperSearchSourceStatus,
+    DeveloperSearchResponse,
+    GovSearchCourtType,
+    GovSearchRequest,
+    GovSearchData,
+    GovSearchResponse,
     
     # Action types
     WaitAction,
@@ -67,6 +84,8 @@ from .v2.types import (
     ScrapeAction,
     ExecuteJavascriptAction,
     PDFAction,
+    PDFParser,
+    ImageParser,
     
     # Usage types
     QueueStatusResponse,
@@ -96,6 +115,10 @@ __all__ = [
     # Document types
     'Document',
     'DocumentMetadata',
+    'PdfBlockConfidence',
+    'PdfBlockItem',
+    'PdfPageBlocks',
+    'PdfPage',
     
     # Scrape types
     'ScrapeFormats',
@@ -141,6 +164,19 @@ __all__ = [
     'SearchResultNews',
     'SearchResultImages',
     'SearchData',
+    'DeveloperSearchType',
+    'DeveloperSearchRequest',
+    'DeveloperSearchLicenseDisclosure',
+    'DeveloperSearchPassage',
+    'DeveloperSearchResult',
+    'DeveloperSearchRepoTypes',
+    'DeveloperSearchRepoStatus',
+    'DeveloperSearchSourceStatus',
+    'DeveloperSearchResponse',
+    'GovSearchCourtType',
+    'GovSearchRequest',
+    'GovSearchData',
+    'GovSearchResponse',
     
     # Action types
     'WaitAction',
@@ -152,6 +188,8 @@ __all__ = [
     'ScrapeAction',
     'ExecuteJavascriptAction',
     'PDFAction',
+    'PDFParser',
+    'ImageParser',
 
     # Usage types
     'QueueStatusResponse',

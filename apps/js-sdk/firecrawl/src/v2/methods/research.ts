@@ -12,7 +12,6 @@ import type {
 import { SdkError } from "../types";
 import { HttpClient } from "../utils/httpClient";
 import { throwForBadResponse } from "../utils/errorHandler";
-import { getVersion } from "../utils/getVersion";
 
 const BASE = "/v2/search/research";
 
@@ -32,10 +31,14 @@ function appendParam(
   }
 }
 
-function withQuery(path: string, params: URLSearchParams): string {
+function withQuery(
+  origin: string,
+  path: string,
+  params: URLSearchParams,
+): string {
   // Research endpoints are GETs, so the POST-body origin injection in
   // HttpClient never applies — attach it as a query param instead.
-  params.append("origin", `js-sdk@${getVersion()}`);
+  params.append("origin", origin);
   const qs = params.toString();
   return qs ? `${path}?${qs}` : path;
 }
@@ -121,7 +124,7 @@ export class ResearchClient {
     appendParam(params, "to", options.to);
     try {
       const res = await this.http.get<SearchPapersResponse>(
-        withQuery(`${BASE}/papers`, params),
+        withQuery(this.http.getOrigin(), `${BASE}/papers`, params),
       );
       if (res.status !== 200) throwForBadResponse(res, "search papers");
       return res.data;
@@ -159,8 +162,14 @@ export class ResearchClient {
     appendParam(params, "query", options.query);
     appendParam(params, "k", options.k);
     try {
-      const res = await this.http.get<PaperMetadataResponse | ReadPaperResponse>(
-        withQuery(`${BASE}/papers/${encodeURIComponent(id)}`, params),
+      const res = await this.http.get<
+        PaperMetadataResponse | ReadPaperResponse
+      >(
+        withQuery(
+          this.http.getOrigin(),
+          `${BASE}/papers/${encodeURIComponent(id)}`,
+          params,
+        ),
       );
       if (res.status !== 200) throwForBadResponse(res, "get paper");
       return res.data;
@@ -192,6 +201,7 @@ export class ResearchClient {
     try {
       const res = await this.http.get<SimilarPapersResponse>(
         withQuery(
+          this.http.getOrigin(),
           `${BASE}/papers/${encodeURIComponent(id)}/similar`,
           params,
         ),
@@ -204,7 +214,16 @@ export class ResearchClient {
   }
 
   /**
-   * Search GitHub issue/PR history and repository readmes.
+   * Search the research index GitHub slice: issue/PR history and repository
+   * readmes.
+   *
+   * @deprecated Use `developerSearch()` on the client instead. This
+   * endpoint stops responding after 2026-11-03. The developer index searches
+   * GitHub issues, pull requests and readmes plus curated documentation
+   * sources, returns matched passages, and adds filters for repo, language,
+   * license and stars. It does not carry over the `scores` breakdown or the
+   * `resultType: "web"` fallback results. See
+   * https://docs.firecrawl.dev/features/developer.
    * @param query Search query.
    * @param options Optional `k`.
    */
@@ -220,7 +239,7 @@ export class ResearchClient {
     appendParam(params, "k", options.k);
     try {
       const res = await this.http.get<GitHubSearchResponse>(
-        withQuery(`${BASE}/github`, params),
+        withQuery(this.http.getOrigin(), `${BASE}/github`, params),
       );
       if (res.status !== 200) throwForBadResponse(res, "search github");
       return res.data;

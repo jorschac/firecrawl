@@ -29,11 +29,12 @@ import {
   checkCreditsMiddleware,
   blocklistMiddleware,
   scrapeBlocklistMiddleware,
-  countryCheck,
+  restrictedOptionsCountryCheck,
   idempotencyMiddleware,
   requestTimingMiddleware,
   validateJobIdParam,
   wrap,
+  inferIntegrationMiddleware,
 } from "./shared";
 import { selfHostedScrapeSearchMapRateLimit } from "../services/self-hosted-rate-limit";
 import { queueStatusController } from "../controllers/v1/queue-status";
@@ -52,7 +53,8 @@ v1Router.post(
   "/scrape",
   selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Scrape, { allowKeyless: true }),
-  countryCheck,
+  inferIntegrationMiddleware,
+  restrictedOptionsCountryCheck,
   checkCreditsMiddleware(1),
   scrapeBlocklistMiddleware,
   wrap(scrapeController),
@@ -61,7 +63,8 @@ v1Router.post(
 v1Router.post(
   "/crawl",
   authMiddleware(RateLimiterMode.Crawl),
-  countryCheck,
+  inferIntegrationMiddleware,
+  restrictedOptionsCountryCheck,
   checkCreditsMiddleware(),
   scrapeBlocklistMiddleware,
   idempotencyMiddleware,
@@ -71,7 +74,8 @@ v1Router.post(
 v1Router.post(
   "/batch/scrape",
   authMiddleware(RateLimiterMode.Scrape),
-  countryCheck,
+  inferIntegrationMiddleware,
+  restrictedOptionsCountryCheck,
   checkCreditsMiddleware(),
   blocklistMiddleware,
   idempotencyMiddleware,
@@ -82,7 +86,8 @@ v1Router.post(
   "/search",
   selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Search, { allowKeyless: true }),
-  countryCheck,
+  inferIntegrationMiddleware,
+  restrictedOptionsCountryCheck,
   checkCreditsMiddleware(undefined, SEARCH_CREDITS_FEATURE_ID),
   wrap(searchController),
 );
@@ -91,6 +96,7 @@ v1Router.post(
   "/map",
   selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Map),
+  inferIntegrationMiddleware,
   checkCreditsMiddleware(1),
   blocklistMiddleware,
   wrap(mapController),
@@ -153,8 +159,9 @@ v1Router.ws("/crawl/:jobId", crawlStatusWSController);
 v1Router.post(
   "/extract",
   authMiddleware(RateLimiterMode.Extract),
+  inferIntegrationMiddleware,
   deprecationMiddleware("v1_extract"),
-  countryCheck,
+  restrictedOptionsCountryCheck,
   checkCreditsMiddleware(20),
   wrap(extractController),
 );
@@ -170,7 +177,7 @@ v1Router.post(
   "/llmstxt",
   authMiddleware(RateLimiterMode.Scrape),
   deprecationMiddleware("v1_llmstxt"),
-  countryCheck,
+  restrictedOptionsCountryCheck,
   blocklistMiddleware,
   wrap(generateLLMsTextController),
 );
@@ -186,7 +193,7 @@ v1Router.post(
   "/deep-research",
   authMiddleware(RateLimiterMode.Crawl),
   deprecationMiddleware("v1_deep_research"),
-  countryCheck,
+  restrictedOptionsCountryCheck,
   checkCreditsMiddleware(1),
   wrap(deepResearchController),
 );

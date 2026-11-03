@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { pickDeclaredLogo } from "../../../lib/branding/declared-logo";
+import {
+  declaredLogoCandidate,
+  pickDeclaredLogo,
+  shouldAddDeclaredLogoCandidate,
+} from "../../../lib/branding/declared-logo";
 
 describe("pickDeclaredLogo", () => {
   it("prefers JSON-LD declared logo over apple-touch icon", () => {
@@ -30,5 +34,182 @@ describe("pickDeclaredLogo", () => {
     ).toBeNull();
     expect(pickDeclaredLogo(undefined)).toBeNull();
     expect(pickDeclaredLogo([])).toBeNull();
+  });
+
+  it("builds a selectable candidate from a declared mark", () => {
+    const candidate = declaredLogoCandidate(
+      "https://x.com/logo.svg",
+      "logo-jsonld",
+      "Example",
+    );
+    expect(candidate).toMatchObject({
+      src: "https://x.com/logo.svg",
+      alt: "Example",
+      isSvg: true,
+      isVisible: true,
+      source: "logo-jsonld",
+      indicators: { inHeader: true, srcMatch: true, hrefMatch: true },
+    });
+    expect(candidate.href).toBeUndefined();
+  });
+
+  it("does not inject a declared mark when a visible header logo exists", () => {
+    expect(
+      shouldAddDeclaredLogoCandidate(
+        [
+          {
+            src: "https://x.com/header.svg",
+            isVisible: true,
+            location: "header",
+            indicators: {
+              inHeader: true,
+              altMatch: true,
+              srcMatch: true,
+              classMatch: false,
+              hrefMatch: true,
+            },
+          },
+        ],
+        { src: "https://x.com/jsonld.png", source: "logo-jsonld" },
+      ),
+    ).toBe(false);
+  });
+
+  it("injects a declared mark when the header image has no logo indicators", () => {
+    expect(
+      shouldAddDeclaredLogoCandidate(
+        [
+          {
+            src: "https://x.com/hero.png",
+            isVisible: true,
+            location: "header",
+            indicators: {
+              inHeader: true,
+              altMatch: false,
+              srcMatch: false,
+              classMatch: false,
+              hrefMatch: false,
+            },
+          },
+        ],
+        { src: "https://x.com/jsonld.png", source: "logo-jsonld" },
+      ),
+    ).toBe(true);
+  });
+
+  it("injects a declared mark when the same URL exists only as a hidden candidate", () => {
+    expect(
+      shouldAddDeclaredLogoCandidate(
+        [
+          {
+            src: "https://x.com/jsonld.png",
+            isVisible: false,
+            location: "body",
+            indicators: {
+              inHeader: false,
+              altMatch: false,
+              srcMatch: true,
+              classMatch: false,
+              hrefMatch: false,
+            },
+          },
+        ],
+        { src: "https://x.com/jsonld.png", source: "logo-jsonld" },
+      ),
+    ).toBe(true);
+  });
+
+  it("does not inject a declared mark when the same URL is already visible", () => {
+    expect(
+      shouldAddDeclaredLogoCandidate(
+        [
+          {
+            src: "https://x.com/jsonld.png",
+            isVisible: true,
+            location: "body",
+            indicators: {
+              inHeader: false,
+              altMatch: false,
+              srcMatch: true,
+              classMatch: false,
+              hrefMatch: false,
+            },
+          },
+        ],
+        { src: "https://x.com/jsonld.png", source: "logo-jsonld" },
+      ),
+    ).toBe(false);
+  });
+
+  it("injects a declared mark when nothing rendered is in the header", () => {
+    expect(
+      shouldAddDeclaredLogoCandidate(
+        [
+          {
+            src: "https://x.com/og.png",
+            isVisible: false,
+            location: "body",
+            indicators: {
+              inHeader: false,
+              altMatch: false,
+              srcMatch: false,
+              classMatch: false,
+              hrefMatch: false,
+            },
+          },
+        ],
+        { src: "https://x.com/jsonld.png", source: "logo-jsonld" },
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps an apple-touch icon out when anything visible looks like a logo", () => {
+    const bodyLogo = {
+      src: "https://x.com/portal/wikimedia_logo.png",
+      isVisible: true,
+      location: "body" as const,
+      indicators: {
+        inHeader: false,
+        altMatch: false,
+        srcMatch: true,
+        classMatch: false,
+        hrefMatch: false,
+      },
+    };
+    expect(
+      shouldAddDeclaredLogoCandidate([bodyLogo], {
+        src: "https://x.com/touch.png",
+        source: "apple-touch-icon",
+      }),
+    ).toBe(false);
+    // The site's own JSON-LD declaration still competes with a body image.
+    expect(
+      shouldAddDeclaredLogoCandidate([bodyLogo], {
+        src: "https://x.com/jsonld.png",
+        source: "logo-jsonld",
+      }),
+    ).toBe(true);
+  });
+
+  it("injects an apple-touch icon when no visible candidate looks like a logo", () => {
+    expect(
+      shouldAddDeclaredLogoCandidate(
+        [
+          {
+            src: "https://x.com/hero.png",
+            isVisible: true,
+            location: "body",
+            indicators: {
+              inHeader: false,
+              altMatch: false,
+              srcMatch: false,
+              classMatch: false,
+              hrefMatch: true,
+            },
+          },
+        ],
+        { src: "https://x.com/touch.png", source: "apple-touch-icon" },
+      ),
+    ).toBe(true);
   });
 });

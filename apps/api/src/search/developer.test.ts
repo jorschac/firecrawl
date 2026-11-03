@@ -44,7 +44,13 @@ describe("searchDeveloperCategory", () => {
     fetchMock.mockResolvedValue(upstreamOk({ results: [] }));
 
     await searchDeveloperCategory(
-      { query: '"exact phrase" retries', limit: 7, teamId: "t1", timeout: 500 },
+      {
+        query: '"exact phrase" retries',
+        limit: 7,
+        teamId: "t1",
+        timeout: 500,
+        zeroDataRetention: false,
+      },
       logger,
     );
 
@@ -55,31 +61,64 @@ describe("searchDeveloperCategory", () => {
     expect([...url.searchParams.keys()]).toEqual(["query", "k"]);
     expect(url.searchParams.has("skills")).toBe(false);
     expect(firstCall()[1].method).toBe("GET");
-    expect(firstCall()[1].headers).toEqual({ "firecrawl-team-id": "t1" });
+    expect(firstCall()[1].headers).toEqual({
+      "firecrawl-team-id": "t1",
+      "firecrawl-zero-data-retention": "false",
+    });
   });
 
-  it("maps upstream results into web result shape", async () => {
+  it("tells the upstream that a zero data retention search must not be kept", async () => {
+    fetchMock.mockResolvedValue(upstreamOk({ results: [] }));
+
+    await searchDeveloperCategory(
+      {
+        query: "private query",
+        limit: 3,
+        teamId: "t1",
+        timeout: 500,
+        zeroDataRetention: true,
+      },
+      logger,
+    );
+
+    expect(firstCall()[1].headers["firecrawl-zero-data-retention"]).toBe(
+      "true",
+    );
+  });
+
+  it("maps results to the exact web schema and leaks nothing upstream", async () => {
+    const license = { state: "licensed", spdx_id: "MIT" };
     fetchMock.mockResolvedValue(
       upstreamOk({
         results: [
           {
-            id: "abc",
-            type: "issue",
+            id: "issue:a/b#1",
             url: "https://github.com/a/b/issues/1",
             title: "Retries drop the backoff",
-            passages: [{ text: "first passage" }],
+            passages: [
+              { text: "first passage", citation_url: "https://example.com" },
+            ],
+            license,
           },
-          { id: "def", type: "readme", url: "", passages: [] },
+          { id: "readme:a/b", url: "", passages: [] },
         ],
       }),
     );
 
     const results = await searchDeveloperCategory(
-      { query: "retries", limit: 5, teamId: "t1", timeout: 500 },
+      {
+        query: "retries",
+        limit: 5,
+        teamId: "t1",
+        timeout: 500,
+        zeroDataRetention: false,
+      },
       logger,
     );
 
-    expect(results).toEqual([
+    // Exact WebSearchResult shape: the upstream id/passages/license must not
+    // appear on the wire; the first passage becomes the description.
+    expect(results).toStrictEqual([
       {
         url: "https://github.com/a/b/issues/1",
         title: "Retries drop the backoff",
@@ -112,7 +151,13 @@ describe("searchDeveloperCategory", () => {
     );
 
     const results = await searchDeveloperCategory(
-      { query: "retries", limit: 5, teamId: "t1", timeout: 500 },
+      {
+        query: "retries",
+        limit: 5,
+        teamId: "t1",
+        timeout: 500,
+        zeroDataRetention: false,
+      },
       logger,
     );
 
@@ -132,7 +177,13 @@ describe("searchDeveloperCategory", () => {
 
     await expect(
       searchDeveloperCategory(
-        { query: "retries", limit: 5, teamId: "t1", timeout: 500 },
+        {
+          query: "retries",
+          limit: 5,
+          teamId: "t1",
+          timeout: 500,
+          zeroDataRetention: false,
+        },
         logger,
       ),
     ).resolves.toEqual([]);
@@ -144,9 +195,70 @@ describe("searchDeveloperCategory", () => {
 
     await expect(
       searchDeveloperCategory(
-        { query: "retries", limit: 5, teamId: "t1", timeout: 500 },
+        {
+          query: "retries",
+          limit: 5,
+          teamId: "t1",
+          timeout: 500,
+          zeroDataRetention: false,
+        },
         logger,
       ),
     ).resolves.toEqual([]);
+  });
+});
+
+describe("searchDeveloperCategory for a US-only team", () => {
+  const usOnlyOptions = {
+    query: "retries",
+    limit: 5,
+    teamId: "t1",
+    timeout: 500,
+    zeroDataRetention: false,
+    usOnly: true,
+  };
+
+  it("asks for US-only processing and reports the parts it skipped", async () => {
+    fetchMock.mockResolvedValue({
+      ...upstreamOk({ results: [{ url: "https://github.com/a/b" }] }),
+      headers: new Headers({ "firecrawl-us-only-skipped": "web, docs" }),
+    });
+    const warnings: string[] = [];
+
+    const results = await searchDeveloperCategory(
+      { ...usOnlyOptions, warnings },
+      logger,
+    );
+
+    expect(firstCall()[1].headers).toEqual({
+      "firecrawl-team-id": "t1",
+      "firecrawl-zero-data-retention": "false",
+      "firecrawl-us-only": "true",
+    });
+    expect(results.map(result => result.url)).toEqual([
+      "https://github.com/a/b",
+    ]);
+    expect(warnings).toEqual([
+      "Some results were not available under US-only processing: web, docs.",
+    ]);
+  });
+
+  it("relays an upstream refusal instead of returning no results", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error:
+          "Code search is not available for teams restricted to US-only processing.",
+      }),
+    } as any);
+
+    await expect(
+      searchDeveloperCategory(usOnlyOptions, logger),
+    ).rejects.toMatchObject({
+      status: 403,
+      message:
+        "Code search is not available for teams restricted to US-only processing.",
+    });
   });
 });
