@@ -8,11 +8,13 @@ import { keyAuthController } from "../../src/controllers/v0/keyAuth";
 import { livenessController } from "../controllers/v0/liveness";
 import { readinessController } from "../controllers/v0/readiness";
 import { deprecationMiddleware } from "../lib/deprecations";
+import { selfHostedScrapeSearchMapRateLimit } from "../services/self-hosted-rate-limit";
 
 export const v0Router = express.Router();
 
 v0Router.post(
   "/v0/scrape",
+  selfHostedScrapeSearchMapRateLimit,
   deprecationMiddleware("v0_scrape"),
   scrapeController,
 );
@@ -34,6 +36,7 @@ v0Router.get("/v0/keyAuth", keyAuthController);
 // Search routes
 v0Router.post(
   "/v0/search",
+  selfHostedScrapeSearchMapRateLimit,
   deprecationMiddleware("v0_search"),
   searchController,
 );

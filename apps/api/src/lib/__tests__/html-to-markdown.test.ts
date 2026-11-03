@@ -1,4 +1,8 @@
-import { parseMarkdown } from "../html-to-markdown";
+import {
+  MAX_HTML_CHARS_FOR_MARKDOWN,
+  parseMarkdown,
+  truncateHtmlForMarkdown,
+} from "../html-to-markdown";
 
 describe("parseMarkdown", () => {
   it("should correctly convert simple HTML to Markdown", async () => {
@@ -46,5 +50,33 @@ describe("parseMarkdown", () => {
     for (const { html, expected } of invalidHtmls) {
       await expect(parseMarkdown(html)).resolves.toBe(expected);
     }
+  });
+});
+
+describe("truncateHtmlForMarkdown", () => {
+  it("leaves HTML within the limit unchanged", () => {
+    expect(truncateHtmlForMarkdown("<p>hi</p>")).toBe("<p>hi</p>");
+  });
+
+  it("cuts oversized HTML at the last tag end inside the limit", () => {
+    const tag = "<p>a</p>";
+    const html = tag.repeat(
+      Math.ceil(MAX_HTML_CHARS_FOR_MARKDOWN / tag.length) + 10,
+    );
+    const truncated = truncateHtmlForMarkdown(html);
+
+    expect(truncated.length).toBeLessThanOrEqual(MAX_HTML_CHARS_FOR_MARKDOWN);
+    expect(truncated.length).toBeGreaterThan(
+      MAX_HTML_CHARS_FOR_MARKDOWN - tag.length,
+    );
+    expect(truncated.endsWith("</p>")).toBe(true);
+    expect(truncated.length).toBeLessThan(html.length);
+  });
+
+  it("caps HTML that has no tags at the character limit", () => {
+    const html = "a".repeat(MAX_HTML_CHARS_FOR_MARKDOWN + 10);
+    expect(truncateHtmlForMarkdown(html)).toBe(
+      "a".repeat(MAX_HTML_CHARS_FOR_MARKDOWN),
+    );
   });
 });

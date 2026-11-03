@@ -11,6 +11,23 @@ import { postProcessMarkdown } from "@mendable/firecrawl-rs";
 
 // TODO: add a timeout to the Go parser
 
+/** ~1.5MB of HTML. Larger documents are cut before markdown conversion. */
+export const MAX_HTML_CHARS_FOR_MARKDOWN = Math.floor(1.5 * 1024 * 1024);
+
+/**
+ * Keep HTML at or under {@link MAX_HTML_CHARS_FOR_MARKDOWN}, ending on a tag
+ * boundary so the parser does not start from a split tag.
+ */
+export function truncateHtmlForMarkdown(html: string): string {
+  if (html.length <= MAX_HTML_CHARS_FOR_MARKDOWN) {
+    return html;
+  }
+
+  const slice = html.slice(0, MAX_HTML_CHARS_FOR_MARKDOWN);
+  const lastTagEnd = slice.lastIndexOf(">");
+  return lastTagEnd >= 0 ? slice.slice(0, lastTagEnd + 1) : slice;
+}
+
 class GoMarkdownConverter {
   private static instance: GoMarkdownConverter;
   private convert: any;
@@ -66,6 +83,16 @@ export async function parseMarkdown(
   const contextLogger = context?.logger || logger;
   const requestId = context?.requestId;
   const zeroDataRetention = context?.zeroDataRetention === true;
+
+  if (html.length > MAX_HTML_CHARS_FOR_MARKDOWN) {
+    const truncated = truncateHtmlForMarkdown(html);
+    contextLogger.warn("Truncating HTML before markdown conversion", {
+      htmlChars: html.length,
+      keptChars: truncated.length,
+      limit: MAX_HTML_CHARS_FOR_MARKDOWN,
+    });
+    html = truncated;
+  }
 
   // Try HTTP service first if enabled
   if (config.HTML_TO_MARKDOWN_SERVICE_URL) {

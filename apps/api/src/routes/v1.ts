@@ -35,6 +35,7 @@ import {
   validateJobIdParam,
   wrap,
 } from "./shared";
+import { selfHostedScrapeSearchMapRateLimit } from "../services/self-hosted-rate-limit";
 import { queueStatusController } from "../controllers/v1/queue-status";
 import { creditUsageHistoricalController } from "../controllers/v1/credit-usage-historical";
 
@@ -49,6 +50,7 @@ v1Router.use(requestTimingMiddleware("v1"));
 
 v1Router.post(
   "/scrape",
+  selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Scrape, { allowKeyless: true }),
   countryCheck,
   checkCreditsMiddleware(1),
@@ -78,6 +80,7 @@ v1Router.post(
 
 v1Router.post(
   "/search",
+  selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Search, { allowKeyless: true }),
   countryCheck,
   checkCreditsMiddleware(undefined, SEARCH_CREDITS_FEATURE_ID),
@@ -86,6 +89,7 @@ v1Router.post(
 
 v1Router.post(
   "/map",
+  selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Map),
   checkCreditsMiddleware(1),
   blocklistMiddleware,

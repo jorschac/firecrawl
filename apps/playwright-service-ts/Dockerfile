@@ -14,13 +14,19 @@ COPY . .
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright
 
-# Install Playwright dependencies
-RUN pnpm exec playwright install chromium --with-deps
-
 RUN pnpm run build
 
-RUN chown -R node:node /usr/src/app \
-  && chmod -R a+rX /usr/local/share/playwright
+# Chromium is only needed when BROWSER_ENGINE=chromium (Playwright launch).
+# Obscura mode connects over CDP and can skip this ~300MB browser install.
+ARG INSTALL_CHROMIUM=true
+RUN if [ "$INSTALL_CHROMIUM" = "true" ]; then \
+      pnpm exec playwright install chromium --with-deps && \
+      chmod -R a+rX /usr/local/share/playwright; \
+    else \
+      echo "Skipping Playwright Chromium install (use BROWSER_ENGINE=obscura)"; \
+    fi
+
+RUN chown -R node:node /usr/src/app
 
 ARG PORT
 ENV PORT=${PORT}

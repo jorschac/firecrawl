@@ -1,9 +1,10 @@
-import { SearchResult } from "../../src/lib/entities";
+import { SearchResult, SearchV2Response } from "../../src/lib/entities";
 import { config } from "../config";
 import { searxng_search } from "./searxng";
 import { fire_engine_search } from "./fireEngine";
 import { Logger } from "winston";
 import { ddgSearch } from "./v2/ddgsearch";
+import { braveSearch } from "./v2/bravesearch";
 
 export async function search({
   query,
@@ -57,16 +58,27 @@ export async function search({
       });
       if (results.length > 0) return results;
     }
-    logger.info("Using DuckDuckGo search");
-    const ddg = await ddgSearch(query, num_results, {
-      tbs,
-      lang,
-      country,
-      proxy,
-      timeout,
-    });
+    let webResults: SearchV2Response;
+    if (config.BRAVE_SEARCH_API_KEY) {
+      logger.info("Using Brave search");
+      webResults = await braveSearch(query, num_results, {
+        tbs,
+        lang,
+        country,
+        timeout,
+      });
+    } else {
+      logger.info("Using DuckDuckGo search");
+      webResults = await ddgSearch(query, num_results, {
+        tbs,
+        lang,
+        country,
+        proxy,
+        timeout,
+      });
+    }
     return (
-      ddg.web?.map(
+      webResults.web?.map(
         result =>
           new SearchResult(result.url, result.title, result.description),
       ) || []

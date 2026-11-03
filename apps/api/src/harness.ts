@@ -850,17 +850,23 @@ async function startServices(command?: string[]): Promise<Services> {
     },
   );
 
-  const extractWorker = execForward(
-    "extract-worker",
-    process.argv[2] === "--start-docker"
-      ? "node dist/src/services/extract-worker.js"
-      : "pnpm extract-worker:production",
-    {
-      NUQ_REDUCE_NOISE: "true",
-      NUQ_POD_NAME: "extract-worker",
-      EXTRACT_WORKER_PORT: String(EXTRACT_WORKER_PORT),
-    },
-  );
+  const extractWorker = config.HARNESS_SKIP_EXTRACT_WORKER
+    ? undefined
+    : execForward(
+        "extract-worker",
+        process.argv[2] === "--start-docker"
+          ? "node dist/src/services/extract-worker.js"
+          : "pnpm extract-worker:production",
+        {
+          NUQ_REDUCE_NOISE: "true",
+          NUQ_POD_NAME: "extract-worker",
+          EXTRACT_WORKER_PORT: String(EXTRACT_WORKER_PORT),
+        },
+      );
+
+  if (config.HARNESS_SKIP_EXTRACT_WORKER) {
+    logger.info("Skipping extract-worker (HARNESS_SKIP_EXTRACT_WORKER=true)");
+  }
 
   const nuqWorkers = Array.from({ length: NUQ_WORKER_COUNT }, (_, i) =>
     execForward(

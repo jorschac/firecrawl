@@ -47,6 +47,7 @@ import {
   isValidJobId,
   validateJobIdParam,
 } from "./shared";
+import { selfHostedScrapeSearchMapRateLimit } from "../services/self-hosted-rate-limit";
 import { queueStatusController } from "../controllers/v2/queue-status";
 import { creditUsageHistoricalController } from "../controllers/v2/credit-usage-historical";
 import { tokenUsageHistoricalController } from "../controllers/v2/token-usage-historical";
@@ -179,6 +180,7 @@ registerMcpActionLogReadRoute(
 
 v2Router.post(
   "/search",
+  selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Search, { allowKeyless: true }),
   countryCheck,
   checkCreditsMiddleware(undefined, SEARCH_CREDITS_FEATURE_ID),
@@ -224,6 +226,7 @@ v2Router.post(
 
 v2Router.post(
   "/scrape",
+  selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Scrape, { allowKeyless: true }),
   countryCheck,
   checkCreditsMiddleware(1),
@@ -263,6 +266,7 @@ v2Router.post(
 
 v2Router.post(
   "/map",
+  selfHostedScrapeSearchMapRateLimit,
   authMiddleware(RateLimiterMode.Map),
   checkCreditsMiddleware(1),
   blocklistMiddleware,

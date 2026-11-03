@@ -3,6 +3,7 @@ import { config } from "../../config";
 import { fire_engine_search_v2 } from "./fireEngine-v2";
 import { searxng_search } from "./searxng";
 import { ddgSearch } from "./ddgsearch";
+import { braveSearch } from "./bravesearch";
 import { Logger } from "winston";
 
 export async function search({
@@ -68,6 +69,17 @@ export async function search({
         safe,
       });
       if (results.web && results.web.length > 0) return results;
+    }
+
+    if (config.BRAVE_SEARCH_API_KEY) {
+      logger.info("Using Brave search");
+      return await braveSearch(query, num_results, {
+        tbs,
+        lang,
+        country,
+        safe,
+        timeout,
+      });
     }
 
     logger.info("Using DuckDuckGo search");

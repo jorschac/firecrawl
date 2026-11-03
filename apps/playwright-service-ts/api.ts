@@ -33,6 +33,22 @@ const ALLOW_LOCAL_WEBHOOKS =
 const PROXY_SERVER = process.env.PROXY_SERVER || null;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || null;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || null;
+const BROWSER_ENGINE = (process.env.BROWSER_ENGINE || 'chromium').toLowerCase();
+const useObscura = BROWSER_ENGINE === 'obscura';
+const OBSCURA_CDP_URLS = (
+  process.env.OBSCURA_CDP_URLS ||
+  process.env.OBSCURA_CDP_URL ||
+  'http://127.0.0.1:9222'
+)
+  .split(',')
+  .map((url) => url.trim())
+  .filter(Boolean);
+const OBSCURA_CDP_RETRIES = Math.max(
+  1,
+  Number.parseInt(process.env.OBSCURA_CDP_RETRIES ?? '30', 10) || 30,
+);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class InsecureConnectionError extends Error {
   constructor(
@@ -157,7 +173,6 @@ class Semaphore {
     return this.queue.length;
   }
 }
-const pageSemaphore = new Semaphore(MAX_CONCURRENT_PAGES);
 
 const AD_SERVING_DOMAINS = [
   'doubleclick.net',
@@ -184,10 +199,93 @@ interface UrlModel {
   skip_tls_verification?: boolean;
 }
 
-let browser: Browser;
+type BrowserSlot = {
+  /** Obscura CDP endpoint, or null for a locally launched Chromium. */
+  endpoint: string | null;
+  browser: Browser | null;
+  connecting: Promise<Browser> | null;
+  activePages: number;
+};
 
-const initializeBrowser = async () => {
-  browser = await chromium.launch({
+const browserSlots: BrowserSlot[] = (useObscura ? OBSCURA_CDP_URLS : [null]).map(
+  (endpoint) => ({ endpoint, browser: null, connecting: null, activePages: 0 }),
+);
+const totalPageSlots = browserSlots.length * MAX_CONCURRENT_PAGES;
+const pageSemaphore = new Semaphore(totalPageSlots);
+let nextSlotIndex = 0;
+
+const slotLabel = (slot: BrowserSlot) => slot.endpoint ?? 'chromium';
+
+const rewriteLocalCdpWebSocketUrl = (
+  webSocketDebuggerUrl: string,
+  httpEndpoint: string,
+): string => {
+  const ws = new URL(webSocketDebuggerUrl);
+  const http = new URL(httpEndpoint);
+  if (
+    ws.hostname === '127.0.0.1' ||
+    ws.hostname === 'localhost' ||
+    ws.hostname === '0.0.0.0' ||
+    ws.hostname === '::1'
+  ) {
+    ws.hostname = http.hostname;
+    if (http.port) {
+      ws.port = http.port;
+    }
+  }
+  return ws.toString();
+};
+
+const resolveCdpEndpoint = async (endpointURL: string): Promise<string> => {
+  const parsed = new URL(endpointURL);
+  if (parsed.protocol === 'ws:' || parsed.protocol === 'wss:') {
+    return endpointURL;
+  }
+
+  const versionUrl = new URL('/json/version', endpointURL).toString();
+  const response = await fetch(versionUrl);
+  if (!response.ok) {
+    throw new Error(`CDP /json/version returned ${response.status}`);
+  }
+
+  const body = (await response.json()) as { webSocketDebuggerUrl?: string };
+  if (!body.webSocketDebuggerUrl) {
+    throw new Error('CDP /json/version missing webSocketDebuggerUrl');
+  }
+
+  return rewriteLocalCdpWebSocketUrl(body.webSocketDebuggerUrl, endpointURL);
+};
+
+const connectOverCdpWithRetry = async (endpointURL: string): Promise<Browser> => {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= OBSCURA_CDP_RETRIES; attempt++) {
+    try {
+      const cdpEndpoint = await resolveCdpEndpoint(endpointURL);
+      console.log(
+        `Connecting to Obscura CDP at ${cdpEndpoint} (attempt ${attempt}/${OBSCURA_CDP_RETRIES})`,
+      );
+      return await chromium.connectOverCDP(cdpEndpoint, { timeout: 5000 });
+    } catch (error) {
+      lastError = error;
+      console.warn(
+        `Obscura CDP not ready: ${error instanceof Error ? error.message : error}`,
+      );
+      await sleep(1000);
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Failed to connect to Obscura CDP at ${endpointURL}`);
+};
+
+const openBrowser = async (slot: BrowserSlot): Promise<Browser> => {
+  if (slot.endpoint) {
+    const connected = await connectOverCdpWithRetry(slot.endpoint);
+    console.log(`Connected to Obscura via CDP (${slot.endpoint})`);
+    return connected;
+  }
+
+  return chromium.launch({
     headless: true,
     args: [
       '--no-sandbox',
@@ -201,7 +299,85 @@ const initializeBrowser = async () => {
   });
 };
 
+const ensureBrowser = async (slot: BrowserSlot): Promise<Browser> => {
+  if (slot.browser?.isConnected()) {
+    return slot.browser;
+  }
+  if (!slot.connecting) {
+    slot.connecting = openBrowser(slot)
+      .then((opened) => {
+        opened.on('disconnected', () => {
+          console.warn(`Browser disconnected: ${slotLabel(slot)}`);
+          if (slot.browser === opened) {
+            slot.browser = null;
+          }
+        });
+        slot.browser = opened;
+        return opened;
+      })
+      .finally(() => {
+        slot.connecting = null;
+      });
+  }
+  return slot.connecting;
+};
+
+/** Waits for a free page slot, preferring the least busy browser and rotating on ties. */
+const acquireBrowserSlot = async (): Promise<BrowserSlot> => {
+  await pageSemaphore.acquire();
+  const start = nextSlotIndex % browserSlots.length;
+  let chosen: BrowserSlot | undefined;
+  for (let i = 0; i < browserSlots.length; i++) {
+    const candidate = browserSlots[(start + i) % browserSlots.length];
+    if (candidate.activePages >= MAX_CONCURRENT_PAGES) continue;
+    if (!chosen || candidate.activePages < chosen.activePages) {
+      chosen = candidate;
+    }
+  }
+  chosen ??= browserSlots[start];
+  nextSlotIndex = (browserSlots.indexOf(chosen) + 1) % browserSlots.length;
+  chosen.activePages++;
+  return chosen;
+};
+
+const releaseBrowserSlot = (slot: BrowserSlot) => {
+  slot.activePages = Math.max(0, slot.activePages - 1);
+  pageSemaphore.release();
+};
+
+const CLOSE_TIMEOUT_MS = 5000;
+
+/** Obscura can panic mid-navigation; page.close() then never settles and the slot stays taken. */
+const closeBrowserResources = async (
+  slot: BrowserSlot,
+  page: Page | null,
+  context: BrowserContext | null,
+) => {
+  const slotBrowser = slot.browser;
+  let finished = false;
+  const closing = (async () => {
+    await page?.close().catch(() => {});
+    await context?.close().catch(() => {});
+    finished = true;
+  })();
+  const timeout = sleep(CLOSE_TIMEOUT_MS).then(() => {
+    if (!finished) throw new Error('close timed out');
+  });
+  try {
+    await Promise.race([closing, timeout]);
+  } catch (error) {
+    console.warn(
+      `Closing the page on ${slotLabel(slot)} did not finish; dropping that browser connection`,
+      error instanceof Error ? error.message : error,
+    );
+    if (slot.browser === slotBrowser) {
+      slot.browser = null;
+    }
+  }
+};
+
 const createContext = async (
+  browser: Browser,
   skipTlsVerification: boolean = false,
   userAgentOverride?: string,
 ): Promise<{
@@ -218,59 +394,77 @@ const createContext = async (
     userAgent,
     viewport,
     ignoreHTTPSErrors: skipTlsVerification,
-    serviceWorkers: 'block',
   };
 
-  contextOptions.proxy = {
-    server: `http://127.0.0.1:${ssrfProxyPort}`,
-  };
+  // Obscura's CDP subset does not implement service worker routing the same
+  // way Chromium does. Upstream proxy is also owned by `obscura serve --proxy`.
+  if (!useObscura) {
+    contextOptions.serviceWorkers = 'block';
+    contextOptions.proxy = {
+      server: `http://127.0.0.1:${ssrfProxyPort}`,
+    };
+  }
 
   const newContext = await browser.newContext(contextOptions);
 
-  if (BLOCK_MEDIA) {
+  const installRoutes = async () => {
+    if (BLOCK_MEDIA) {
+      await newContext.route(
+        '**/*.{png,jpg,jpeg,gif,svg,mp3,mp4,avi,flac,ogg,wav,webm}',
+        async (route: Route, request: PlaywrightRequest) => {
+          await route.abort();
+        },
+      );
+    }
+
+    // Intercept all requests to avoid loading ads
     await newContext.route(
-      '**/*.{png,jpg,jpeg,gif,svg,mp3,mp4,avi,flac,ogg,wav,webm}',
+      '**/*',
       async (route: Route, request: PlaywrightRequest) => {
-        await route.abort();
+        const requestUrlString = request.url();
+        try {
+          await assertSafeTargetUrl(requestUrlString);
+        } catch (error) {
+          if (error instanceof InsecureConnectionError) {
+            if (request.isNavigationRequest()) {
+              securityState.blockedNavigationRequestUrl = requestUrlString;
+            }
+            console.warn(`Blocked request: ${requestUrlString}`);
+            return route.abort('blockedbyclient');
+          }
+          throw error;
+        }
+
+        const hostname = new URL(requestUrlString).hostname.toLowerCase();
+
+        if (AD_SERVING_DOMAINS.some((domain) => hostname.includes(domain))) {
+          console.log(hostname);
+          return route.abort();
+        }
+        return route.continue();
       },
     );
+  };
+
+  try {
+    await installRoutes();
+  } catch (error) {
+    if (!useObscura) {
+      throw error;
+    }
+    console.warn(
+      'Obscura does not support Playwright request routing; continuing without route hooks',
+      error instanceof Error ? error.message : error,
+    );
   }
-
-  // Intercept all requests to avoid loading ads
-  await newContext.route(
-    '**/*',
-    async (route: Route, request: PlaywrightRequest) => {
-      const requestUrlString = request.url();
-      try {
-        await assertSafeTargetUrl(requestUrlString);
-      } catch (error) {
-        if (error instanceof InsecureConnectionError) {
-          if (request.isNavigationRequest()) {
-            securityState.blockedNavigationRequestUrl = requestUrlString;
-          }
-          console.warn(`Blocked request: ${requestUrlString}`);
-          return route.abort('blockedbyclient');
-        }
-        throw error;
-      }
-
-      const hostname = new URL(requestUrlString).hostname.toLowerCase();
-
-      if (AD_SERVING_DOMAINS.some((domain) => hostname.includes(domain))) {
-        console.log(hostname);
-        return route.abort();
-      }
-      return route.continue();
-    },
-  );
 
   return { context: newContext, securityState };
 };
 
 const shutdownBrowser = async () => {
-  if (browser) {
-    await browser.close();
-  }
+  await Promise.all(
+    browserSlots.map((slot) => slot.browser?.close().catch(() => {})),
+  );
 };
 
 const isValidUrl = (urlString: string): boolean => {
@@ -336,9 +530,14 @@ const scrapePage = async (
     }
   }
 
+  // Obscura's CDP subset often completes navigation without a Playwright
+  // Response object. Content can still be present via page.content().
+  const status =
+    response?.status() ?? (useObscura && content ? 200 : null);
+
   return {
     content,
-    status: response ? response.status() : null,
+    status,
     headers,
     contentType: ct,
   };
@@ -346,19 +545,27 @@ const scrapePage = async (
 
 app.get('/health', async (req: Request, res: Response) => {
   try {
-    if (!browser) {
-      await initializeBrowser();
-    }
+    const browsers = await Promise.all(browserSlots.map(ensureBrowser));
 
-    const { context: testContext } = await createContext();
-    const testPage = await testContext.newPage();
-    await testPage.close();
-    await testContext.close();
+    // Opening a probe page on a busy Obscura instance breaks the page already
+    // loading there, so Obscura health is connection-only.
+    if (!useObscura) {
+      const { context: testContext } = await createContext(browsers[0]);
+      const testPage = await testContext.newPage();
+      await testPage.close();
+      await testContext.close();
+    }
 
     res.status(200).json({
       status: 'healthy',
-      maxConcurrentPages: MAX_CONCURRENT_PAGES,
-      activePages: MAX_CONCURRENT_PAGES - pageSemaphore.getAvailablePermits(),
+      maxConcurrentPages: totalPageSlots,
+      activePages: totalPageSlots - pageSemaphore.getAvailablePermits(),
+      queuedRequests: pageSemaphore.getQueueLength(),
+      browsers: browserSlots.map((slot) => ({
+        endpoint: slotLabel(slot),
+        connected: !!slot.browser?.isConnected(),
+        activePages: slot.activePages,
+      })),
     });
   } catch (error) {
     console.error('Health check failed:', error);
@@ -415,17 +622,18 @@ app.post('/scrape', async (req: Request, res: Response) => {
     );
   }
 
-  if (!browser) {
-    await initializeBrowser();
-  }
-
-  await pageSemaphore.acquire();
+  const slot = await acquireBrowserSlot();
 
   let requestContext: BrowserContext | null = null;
   let securityState: ContextSecurityState | null = null;
   let page: Page | null = null;
 
   try {
+    const slotBrowser = await ensureBrowser(slot);
+    console.log(
+      `Browser: ${slotLabel(slot)} (${slot.activePages}/${MAX_CONCURRENT_PAGES} on this instance)`,
+    );
+
     // Extract user-agent from request headers (case-insensitive) so it can
     // be applied at the context level.  Playwright ignores user-agent in
     // setExtraHTTPHeaders when the context already defines one (#2802).
@@ -436,6 +644,7 @@ app.post('/scrape', async (req: Request, res: Response) => {
       : undefined;
 
     const contextBundle = await createContext(
+      slotBrowser,
       skip_tls_verification,
       userAgentOverride,
     );
@@ -552,15 +761,28 @@ app.post('/scrape', async (req: Request, res: Response) => {
       .status(500)
       .json({ error: 'An error occurred while fetching the page.' });
   } finally {
-    if (page) await page.close();
-    if (requestContext) await requestContext.close();
-    pageSemaphore.release();
+    await closeBrowserResources(slot, page, requestContext);
+    releaseBrowserSlot(slot);
   }
 });
 
 const start = async () => {
   ssrfProxyPort = await startSSRFProxy();
-  await initializeBrowser();
+  console.log(
+    `Browser engine: ${useObscura ? 'obscura' : 'chromium'}` +
+      (useObscura ? ` (${OBSCURA_CDP_URLS.join(', ')})` : '') +
+      `, ${MAX_CONCURRENT_PAGES} page(s) per browser`,
+  );
+  const started = await Promise.allSettled(browserSlots.map(ensureBrowser));
+  for (const [i, result] of started.entries()) {
+    if (result.status === 'rejected') {
+      console.warn(
+        `Browser not ready at startup (${slotLabel(browserSlots[i])}): ${
+          result.reason instanceof Error ? result.reason.message : result.reason
+        }`,
+      );
+    }
+  }
   app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
   });

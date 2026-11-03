@@ -232,6 +232,7 @@ const configSchema = z.object({
   SEARXNG_ENDPOINT: z.string().optional(),
   SEARXNG_ENGINES: z.string().optional(),
   SEARXNG_CATEGORIES: z.string().optional(),
+  BRAVE_SEARCH_API_KEY: z.string().optional(),
   SEARCH_SERVICE_URL: z.string().optional(),
   SEARCH_INDEX_SAMPLE_RATE: z.coerce.number().default(0.1),
   ENABLE_SEARCH_INDEX: z.stringbool().optional(),
@@ -249,6 +250,8 @@ const configSchema = z.object({
 
   // Harness Configuration
   HARNESS_STARTUP_TIMEOUT_MS: z.coerce.number().default(60000),
+  // Skip the extract worker (and its RabbitMQ dependency). Scrape/search/map/batch still work.
+  HARNESS_SKIP_EXTRACT_WORKER: z.stringbool().default(false),
 
   // Job & Lock Management
   JOB_LOCK_EXTEND_INTERVAL: z.coerce.number().default(10000),
@@ -350,6 +353,9 @@ const configSchema = z.object({
   // Rate Limiting
   RATE_LIMIT_TEST_API_KEY_SCRAPE: z.coerce.number().optional(),
   RATE_LIMIT_TEST_API_KEY_CRAWL: z.coerce.number().optional(),
+  // Self-hosted (USE_DB_AUTHENTICATION=false) shared cap for scrape/search/map.
+  SELF_HOSTED_RATE_LIMIT_POINTS: z.coerce.number().default(50),
+  SELF_HOSTED_RATE_LIMIT_DURATION: z.coerce.number().default(60),
 
   // Testing
   TEST_API_KEY: z.string().optional(),

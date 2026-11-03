@@ -1,51 +1,10 @@
-<h3 align="center">
-  <a name="readme-top"></a>
-  <img
-    src="https://raw.githubusercontent.com/firecrawl/firecrawl/main/img/firecrawl_logo.png"
-    height="200"
-  >
-</h3>
-
-<div align="center">
-  <a href="https://github.com/firecrawl/firecrawl/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/firecrawl/firecrawl" alt="License">
-  </a>
-  <a href="https://pepy.tech/project/firecrawl-py">
-    <img src="https://static.pepy.tech/badge/firecrawl-py" alt="Downloads">
-  </a>
-  <a href="https://GitHub.com/firecrawl/firecrawl/graphs/contributors">
-    <img src="https://img.shields.io/github/contributors/firecrawl/firecrawl.svg" alt="GitHub Contributors">
-  </a>
-  <a href="https://firecrawl.dev">
-    <img src="https://img.shields.io/badge/Visit-firecrawl.dev-orange" alt="Visit firecrawl.dev">
-  </a>
-</div>
-
-<div>
-  <p align="center">
-    <a href="https://twitter.com/firecrawl">
-      <img src="https://img.shields.io/badge/Follow%20on%20X-000000?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X" />
-    </a>
-    <a href="https://www.linkedin.com/company/104100957">
-      <img src="https://img.shields.io/badge/Follow%20on%20LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="Follow on LinkedIn" />
-    </a>
-    <a href="https://discord.gg/firecrawl">
-      <img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord" />
-    </a>
-  </p>
-</div>
-
 ---
 
 # **🔥 Firecrawl**
 
 **The API to search, scrape, and interact with the web at scale. 🔥** The web context API to find sources, extract content, and turn it into clean Markdown or structured data your agents can ship with. Open source and available as a [hosted service](https://firecrawl.dev/?ref=github).
 
-_Pst. Hey, you, join our stargazers :)_
-
-<a href="https://github.com/firecrawl/firecrawl">
-  <img src="https://img.shields.io/github/stars/firecrawl/firecrawl.svg?style=social&label=Star&maxAge=2592000" alt="GitHub stars">
-</a>
+*Pst. Hey, you, join our stargazers :)*
 
 ---
 
@@ -62,26 +21,34 @@ _Pst. Hey, you, join our stargazers :)_
 
 ---
 
+
+
 ## Feature Overview
 
 **Core Endpoints**
 
-| Feature | Description |
-|---------|-------------|
-| [**Search**](#search) | Search the web and get full page content from results |
-| [**Scrape**](#scrape) | Convert any URL to markdown, HTML, screenshots, or structured JSON |
-| [**Interact**](#interact) | Scrape a page, then interact with it using AI prompts or code |
+
+| Feature                   | Description                                                        |
+| ------------------------- | ------------------------------------------------------------------ |
+| **[Search](#search)**     | Search the web and get full page content from results              |
+| **[Scrape](#scrape)**     | Convert any URL to markdown, HTML, screenshots, or structured JSON |
+| **[Interact](#interact)** | Scrape a page, then interact with it using AI prompts or code      |
+
 
 **More**
 
-| Feature | Description |
-|---------|-------------|
-| [**Agent**](#agent) | Automated data gathering, just describe what you need |
-| [**Crawl**](#crawl) | Scrape all URLs of a website with a single request |
-| [**Map**](#map) | Discover all URLs on a website instantly |
-| [**Batch Scrape**](#batch-scrape) | Scrape thousands of URLs asynchronously |
+
+| Feature                           | Description                                           |
+| --------------------------------- | ----------------------------------------------------- |
+| **[Agent](#agent)**               | Automated data gathering, just describe what you need |
+| **[Crawl](#crawl)**               | Scrape all URLs of a website with a single request    |
+| **[Map](#map)**                   | Discover all URLs on a website instantly              |
+| **[Batch Scrape](#batch-scrape)** | Scrape thousands of URLs asynchronously               |
+
 
 ---
+
+
 
 ## Quick Start
 
@@ -99,10 +66,10 @@ app = Firecrawl(api_key="fc-YOUR_API_KEY")
 search_result = app.search("firecrawl", limit=5)
 ```
 
-<details>
-<summary><b>Node.js / cURL / CLI</b></summary>
+**Node.js / cURL / CLI**
 
 **Node.js**
+
 ```javascript
 import { Firecrawl } from 'firecrawl';
 
@@ -112,6 +79,7 @@ app.search("firecrawl", { limit: 5 })
 ```
 
 **cURL**
+
 ```bash
 curl -X POST 'https://api.firecrawl.dev/v2/search' \
 -H 'Authorization: Bearer fc-YOUR_API_KEY' \
@@ -123,12 +91,13 @@ curl -X POST 'https://api.firecrawl.dev/v2/search' \
 ```
 
 **CLI**
+
 ```bash
 firecrawl search "firecrawl" --limit 5
 ```
-</details>
 
 Output:
+
 ```json
 [
   {
@@ -144,6 +113,8 @@ Output:
 ]
 ```
 
+
+
 ### Scrape
 
 Get LLM-ready data from any website — markdown, JSON, screenshots, and more.
@@ -156,10 +127,10 @@ app = Firecrawl(api_key="fc-YOUR_API_KEY")
 result = app.scrape('firecrawl.dev')
 ```
 
-<details>
-<summary><b>Node.js / cURL / CLI</b></summary>
+**Node.js / cURL / CLI**
 
 **Node.js**
+
 ```javascript
 import { Firecrawl } from 'firecrawl';
 
@@ -169,6 +140,7 @@ app.scrape('firecrawl.dev')
 ```
 
 **cURL**
+
 ```bash
 curl -X POST 'https://api.firecrawl.dev/v2/scrape' \
 -H 'Authorization: Bearer fc-YOUR_API_KEY' \
@@ -179,13 +151,14 @@ curl -X POST 'https://api.firecrawl.dev/v2/scrape' \
 ```
 
 **CLI**
+
 ```bash
 firecrawl scrape https://firecrawl.dev
 firecrawl https://firecrawl.dev --only-main-content
 ```
-</details>
 
 Output:
+
 ```
 # Firecrawl
 
@@ -197,6 +170,8 @@ Firecrawl helps AI agents search, scrape, and interact with the web.
 - Interact: Click, navigate, and operate pages
 - Agent: Autonomous data gathering
 ```
+
+
 
 ### Interact
 
@@ -214,10 +189,10 @@ app.interact(scrape_id, prompt="Search for 'mechanical keyboard'")
 app.interact(scrape_id, prompt="Click the first result")
 ```
 
-<details>
-<summary><b>Node.js / cURL / CLI</b></summary>
+**Node.js / cURL / CLI**
 
 **Node.js**
+
 ```javascript
 import { Firecrawl } from 'firecrawl';
 
@@ -234,6 +209,7 @@ await app.interact(result.metadata.scrapeId, {
 ```
 
 **cURL**
+
 ```bash
 # 1. Scrape the page
 curl -X POST 'https://api.firecrawl.dev/v2/scrape' \
@@ -249,14 +225,15 @@ curl -X POST 'https://api.firecrawl.dev/v2/scrape/SCRAPE_ID/interact' \
 ```
 
 **CLI**
+
 ```bash
 firecrawl scrape https://amazon.com
 firecrawl interact exec --prompt "Search for 'mechanical keyboard'"
 firecrawl interact exec --prompt "Click the first result"
 ```
-</details>
 
 Output:
+
 ```json
 {
   "success": true,
@@ -266,6 +243,8 @@ Output:
 ```
 
 ---
+
+
 
 ## Power Your Agent
 
@@ -299,6 +278,8 @@ Connect any MCP-compatible client to the web in seconds.
 }
 ```
 
+
+
 ### Agent Onboarding
 
 Are you an AI agent? Fetch this skill to sign up your user, get an API key, and start building with Firecrawl.
@@ -311,13 +292,18 @@ See the [Skill + CLI documentation](https://docs.firecrawl.dev/sdks/cli) for all
 
 ---
 
+
+
 ## More Endpoints
+
+
 
 ### Agent
 
 **The easiest way to get data from the web.** Describe what you need, and our AI agent searches, navigates, and retrieves it. No URLs required.
 
 Agent is the evolution of our `/extract` endpoint: faster, more reliable, and doesn't require you to know the URLs upfront.
+
 ```bash
 curl -X POST 'https://api.firecrawl.dev/v2/agent' \
   -H 'Authorization: Bearer fc-YOUR_API_KEY' \
@@ -328,6 +314,7 @@ curl -X POST 'https://api.firecrawl.dev/v2/agent' \
 ```
 
 Response:
+
 ```json
 {
   "success": true,
@@ -338,9 +325,12 @@ Response:
 }
 ```
 
+
+
 #### Agent with Structured Output
 
 Use a schema to get structured data:
+
 ```python
 from firecrawl import Firecrawl
 from pydantic import BaseModel, Field
@@ -362,6 +352,7 @@ result = app.agent(
 
 print(result.data)
 ```
+
 ```json
 {
   "founders": [
@@ -372,9 +363,12 @@ print(result.data)
 }
 ```
 
+
+
 #### Agent with URLs (Optional)
 
 Focus the agent on specific pages:
+
 ```python
 result = app.agent(
     urls=["https://docs.firecrawl.dev", "https://firecrawl.dev/pricing"],
@@ -382,14 +376,19 @@ result = app.agent(
 )
 ```
 
+
+
 #### Model Selection
 
 Choose between two models based on your needs:
 
-| Model | Cost | Best For |
-|-------|------|----------|
-| `spark-1-mini` (default) | 60% cheaper | Most tasks |
-| `spark-1-pro` | Standard | Complex research, critical data gathering |
+
+| Model                    | Cost        | Best For                                  |
+| ------------------------ | ----------- | ----------------------------------------- |
+| `spark-1-mini` (default) | 60% cheaper | Most tasks                                |
+| `spark-1-pro`            | Standard    | Complex research, critical data gathering |
+
+
 ```python
 result = app.agent(
     prompt="Compare enterprise features across Firecrawl, Apify, and ScrapingBee",
@@ -397,8 +396,8 @@ result = app.agent(
 )
 ```
 
-
 **When to use Pro:**
+
 - Comparing data across multiple websites
 - Extracting from sites with complex navigation or auth
 - Research tasks where the agent needs to explore multiple paths
@@ -409,6 +408,7 @@ Learn more about Spark models in our [Agent documentation](https://docs.firecraw
 ### Crawl
 
 Crawl an entire website and get content from all pages.
+
 ```bash
 curl -X POST 'https://api.firecrawl.dev/v2/crawl' \
   -H 'Authorization: Bearer fc-YOUR_API_KEY' \
@@ -423,6 +423,7 @@ curl -X POST 'https://api.firecrawl.dev/v2/crawl' \
 ```
 
 Returns a job ID:
+
 ```json
 {
   "success": true,
@@ -431,11 +432,15 @@ Returns a job ID:
 }
 ```
 
+
+
 #### Check Crawl Status
+
 ```bash
 curl -X GET 'https://api.firecrawl.dev/v2/crawl/123-456-789' \
   -H 'Authorization: Bearer fc-YOUR_API_KEY'
 ```
+
 ```json
 {
   "status": "completed",
@@ -456,6 +461,7 @@ curl -X GET 'https://api.firecrawl.dev/v2/crawl/123-456-789' \
 ### Map
 
 Discover all URLs on a website instantly.
+
 ```bash
 curl -X POST 'https://api.firecrawl.dev/v2/map' \
   -H 'Authorization: Bearer fc-YOUR_API_KEY' \
@@ -464,6 +470,7 @@ curl -X POST 'https://api.firecrawl.dev/v2/map' \
 ```
 
 Response:
+
 ```json
 {
   "success": true,
@@ -475,9 +482,12 @@ Response:
 }
 ```
 
+
+
 #### Map with Search
 
 Find specific URLs within a site:
+
 ```python
 from firecrawl import Firecrawl
 
@@ -487,9 +497,12 @@ result = app.map("https://firecrawl.dev", search="pricing")
 # Returns URLs ordered by relevance to "pricing"
 ```
 
+
+
 ### Batch Scrape
 
 Scrape multiple URLs at once:
+
 ```python
 from firecrawl import Firecrawl
 
@@ -507,6 +520,8 @@ for doc in job.data:
 
 ---
 
+
+
 ## SDKs
 
 Our SDKs provide a convenient way to use all Firecrawl features and automatically handle polling for async operations.
@@ -514,9 +529,11 @@ Our SDKs provide a convenient way to use all Firecrawl features and automaticall
 ### Python
 
 Install the SDK:
+
 ```bash
 pip install firecrawl-py
 ```
+
 ```python
 from firecrawl import Firecrawl
 
@@ -540,12 +557,16 @@ results = app.search("best AI data tools 2024", limit=10)
 print(results)
 ```
 
+
+
 ### Node.js
 
 Install the SDK:
+
 ```bash
 npm install firecrawl
 ```
+
 ```javascript
 import { Firecrawl } from 'firecrawl';
 
@@ -572,12 +593,16 @@ results.data.web.forEach(result => {
 });
 ```
 
+
+
 ### Go
 
 Install the SDK:
+
 ```bash
 go get github.com/firecrawl/firecrawl/apps/go-sdk
 ```
+
 ```go
 package main
 
@@ -637,9 +662,12 @@ func main() {
 }
 ```
 
+
+
 ### Java
 
 Add the dependency ([Gradle/Maven](https://docs.firecrawl.dev/sdks/java#installation)):
+
 ```groovy
 repositories {
     mavenCentral()
@@ -650,6 +678,7 @@ dependencies {
     implementation 'com.github.firecrawl:firecrawl-java-sdk:2.0'
 }
 ```
+
 ```java
 import dev.firecrawl.client.FirecrawlClient;
 import dev.firecrawl.model.*;
@@ -687,9 +716,12 @@ for (SearchResult r : results.getResults()) {
 }
 ```
 
+
+
 ### Elixir
 
 Add the dependency:
+
 ```elixir
 def deps do
   [
@@ -697,6 +729,7 @@ def deps do
   ]
 end
 ```
+
 ```elixir
 # Scrape a URL
 {:ok, response} = Firecrawl.scrape_and_extract_from_url(
@@ -720,14 +753,18 @@ end
 {:ok, response} = Firecrawl.map_urls(url: "https://example.com")
 ```
 
+
+
 ### Rust
 
 Add the dependency:
+
 ```toml
 [dependencies]
 firecrawl = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
+
 ```rust
 use firecrawl::{Client, ScrapeOptions, Format, CrawlOptions};
 
@@ -755,12 +792,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+
+
 ### Ruby
 
 Install the SDK:
+
 ```bash
 gem install firecrawl-sdk
 ```
+
 ```ruby
 require "firecrawl"
 
@@ -787,12 +828,16 @@ results = client.search("best AI data tools 2024",
 puts results
 ```
 
+
+
 ### .NET
 
 Install the SDK:
+
 ```bash
 dotnet add package firecrawl-sdk
 ```
+
 ```csharp
 using Firecrawl;
 using Firecrawl.Models;
@@ -815,12 +860,16 @@ var results = await client.SearchAsync("best AI data tools 2024",
 Console.WriteLine(results);
 ```
 
+
+
 ### PHP
 
 Install the SDK:
+
 ```bash
 composer require firecrawl/firecrawl-sdk
 ```
+
 ```php
 <?php
 
@@ -850,15 +899,19 @@ print_r($results);
 
 ---
 
+
+
 ## Integrations
 
 **Agents & AI Tools**
+
 - [Firecrawl Skill](https://docs.firecrawl.dev/sdks/cli)
 - [Firecrawl CLI Skills](https://github.com/firecrawl/cli#agent-skills)
 - [Firecrawl Workflows](https://github.com/firecrawl/firecrawl-workflows)
 - [Firecrawl MCP](https://github.com/mendableai/firecrawl-mcp-server)
 
 **Platforms**
+
 - [Lovable](https://docs.lovable.dev/integrations/firecrawl)
 - [Zapier](https://zapier.com/apps/firecrawl/integrations)
 - [n8n](https://n8n.io/integrations/firecrawl/)
@@ -869,6 +922,8 @@ print_r($results);
 
 ---
 
+
+
 ## Resources
 
 - [Documentation](https://docs.firecrawl.dev)
@@ -878,15 +933,175 @@ print_r($results);
 
 ---
 
+
+
 ## Open Source vs Cloud
 
 Firecrawl is open source under the AGPL-3.0 license. The cloud version at [firecrawl.dev](https://firecrawl.dev) includes additional features:
 
-![Open Source vs Cloud](https://raw.githubusercontent.com/firecrawl/firecrawl/main/img/open-source-cloud.png)
+Open Source vs Cloud
 
 To run locally, see the [Contributing Guide](https://github.com/firecrawl/firecrawl/blob/main/CONTRIBUTING.md). To self-host, see [Self-Hosting Guide](https://docs.firecrawl.dev/contributing/self-host).
 
 ---
+
+
+
+## 本仓库：4GiB 自托管裁剪与链路报告
+
+本 fork 按 **2 核 / 4GiB 内存** 的业务机约束裁剪了官方 Docker 栈，并接上本机 Clash 代理（`host.docker.internal:7897`）与 Obscura 浏览器 sidecar。目标是给 Hermes 一个可直连的 `FIRECRAWL_BASE_URL`，而不是复刻 Firecrawl Cloud 全功能。
+
+- 入口：`http://127.0.0.1:3002`
+- 认证：`USE_DB_AUTHENTICATION=false`，**不需要 API Key**
+- Hermes：`FIRECRAWL_BASE_URL=http://127.0.0.1:3002`
+- 限流：`scrape` / `search` / `map` **合计**每 60 秒最多 50 次（Redis）。超限返回 HTTP 429，`error` 里写明规则和还要等几秒。`SELF_HOSTED_RATE_LIMIT_POINTS` / `SELF_HOSTED_RATE_LIMIT_DURATION` 可改。
+- 重启：所有容器 `restart: unless-stopped`（崩了会拉起；你手动 `docker compose stop` 后不会擅自回来）。本机 Docker 走 Colima，登录时由 LaunchAgent `com.firecrawl.colima` 执行一次 `colima start`；引擎起来后带 `unless-stopped` 的容器会跟着起来。出网仍依赖本机 Clash。
+
+容器内存上限合计 **2464 MiB**（api 1536 + playwright 288 + obscura×2 400 + redis 48 + postgres 192）。空闲 + 一次 scrape 实测约 **1.5 GiB**。
+
+### 删了 / 关掉了什么
+
+
+| 项                                  | 做法                                                    | 原因                                     |
+| ---------------------------------- | ----------------------------------------------------- | -------------------------------------- |
+| FoundationDB + init                | 从 `docker-compose.yaml` 去掉；队列走 Postgres               | FDB 客户端库体积大、运行时吃内存，4GiB 扛不住            |
+| RabbitMQ（含 management）             | 从 compose 去掉                                          | 主要为 extract 队列服务；无 extract-worker 后无必要 |
+| extract-worker                     | `HARNESS_SKIP_EXTRACT_WORKER=true`，harness 不拉起该进程     | 常驻 Node 进程，extract 本就不能在无云能力下完整工作      |
+| NuQ worker 默认 5 个                  | `NUQ_WORKER_COUNT=1`                                  | 每个 worker 都是独立 Node，内存线性涨              |
+| Playwright 镜像内 Chromium            | `INSTALL_CHROMIUM=false`                              | 改由 Obscura 提供浏览器；镜像更小、运行时少一份 Chrome    |
+| Playwright 1GiB tmpfs、host 映射 3000 | 去掉                                                    | tmpfs 直接占 RAM；3000 不必对外暴露              |
+| API / Playwright 默认大内存限额           | api 1536m、playwright 288m                             | 官方默认按 8G/4G 量级，4GiB 主机必 OOM            |
+| Node heap                          | `NODE_OPTIONS=--max-old-space-size=512`               | 限制 api 容器内多个 Node 进程的堆                 |
+| Markdown 转换                        | `USE_GO_MARKDOWN_PARSER=true`；HTML 超过约 1.5MB 先截到上一个标签结束再转 | 转换走 Go 解析器，避免大页面在 V8 里建 DOM 把堆撑爆 |
+| 并发                                 | `MAX_CONCURRENT_JOBS=4`，`CRAWL_CONCURRENT_REQUESTS=6`，`PLAYWRIGHT_MAX_CONCURRENT_PAGES=1`，两个 Obscura 实例 | 同时最多 4 个作业；每个 Obscura 一次只开 1 个页面（同进程里跳转会让其他页面读不出 HTML）；两个实例可同时接两个 scrape |
+| Redis 持久化 / 大缓存                    | `--maxmemory 32mb --save ""`                          | 本机不需要持久队列快照                            |
+| Postgres 默认缓冲                      | `shared_buffers=32MB`，`max_connections=40`            | 给 api/浏览器让内存                           |
+
+
+
+
+### 保留了什么
+
+
+| 项                                          | 作用                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `api` harness                              | 对外 HTTP；容器内仍起 `api` + `queue-worker` + `nuq-worker-0` + `nuq-prefetch` + `nuq-reconciler` |
+| Redis                                      | 限流账本（自托管 scrape/search/map 合计 60 秒 50 次）、crawl 会话、并发键等短状态；extract 本身已关 |
+| `nuq-postgres`                             | scrape / crawl / batch 的 NuQ 队列后端                                                         |
+| `playwright-service`                       | 把抓取请求转到浏览器引擎                                                                              |
+| `obscura` / `obscura-2` sidecar            | 两个独立 CDP 浏览器，Playwright 按空闲轮询分配；经 Clash 出网；`--allow-private-network` 才能连 RFC1918 的宿主机代理 |
+| scrape / search / map / batch / crawl 代码路径 | 自托管能跑的核心抓取链路                                                                              |
+| Clash 出网                                   | `PROXY_SERVER` + `HTTP(S)_PROXY` + `NODE_USE_ENV_PROXY=1`；构建镜像同样走代理                       |
+| OpenAI 兼容 LLM 配置                           | `OPENAI_BASE_URL` + `MODEL_NAME`（给仍走 chat completions 的路径用；**不是** Agent）                  |
+
+
+未改上游产品语义：没有 fire-engine、没有云端 Index/Exchange、没有 `EXTRACT_V3_BETA_URL`，这些能力本来就不在开源自托管里。
+
+### 删除与缺云账户的影响
+
+**因本仓库裁剪（4GiB）造成：**
+
+- `**POST /v2/extract**`：没有 extract-worker，也没有 RabbitMQ。请求可能入队或报错，**不会跑完**。
+- **并发 / 吞吐**：同时只能稳跑约 1 个 scrape 作业；大批量 crawl 会很慢，还可能把 api 堆顶满。
+- **无 Chromium 回退**：Obscura 挂了就不能用 Playwright 引擎；fetch 引擎仍在，但 JS 站点会空。
+- **无 FDB**：不能切 `NUQ_BACKEND=fdb`。
+- **无 Redis 持久化**：重启丢限流/短状态，队列在 Postgres 里。
+
+**因没有 Firecrawl Cloud / fire-engine / 云托管账户（开源自托管本来就没有）：**
+
+- `**POST /v2/agent**`：硬依赖 `EXTRACT_V3_BETA_URL`，实测 `500 Agent beta is not enabled.`
+- **截图、actions、Interact、stealth/captcha、品牌提取**：绑定 fire-engine CDP；本地 Playwright 引擎 `screenshot`/`actions` 均为 false
+- **Search 质量**：无 Google/fire-engine 搜索。`.env` 填了 `BRAVE_SEARCH_API_KEY` 就走 Brave Search API（`/res/v1/web/search`，经 Clash 代理，按次计费、需信用卡）；留空则走 DuckDuckGo 回退（未配 SearXNG）。Brave 报错不会再退回 DDG
+- **Map 完整度**：无云端 Index / fire-engine sitemap 增强。接口能 200，但无 sitemap 的 SPA（如 `open-sandbox.ai`）会返回 `links: []`
+- **Browser API、Monitor、Slack、计费/credits、团队威胁防护等**：云控制面，自托管不可用
+- **认证 / 多租户**：关掉了 DB auth，只适合本机单用户
+
+**仍可用但降级：**
+
+- Scrape JS 页：Obscura 已开 `--stealth`（指纹；TLS 伪装取决于镜像是否带 stealth 编译特性）。这不是 Cloud 的 enhanced 代理
+- JSON 结构化抽取（scrape 的 json format）：不走 extract-worker，理论上可打 OpenAI 兼容接口，**本轮未做冒烟**
+
+
+
+### 链路状态（本机实测）
+
+
+| 链路                                   | 状态       | 说明                                                           |
+| ------------------------------------ | -------- | ------------------------------------------------------------ |
+| Health `GET /v0/health/readiness`    | 通        | `{"status":"ok"}`                                            |
+| Scrape `POST /v2/scrape`             | 通        | `example.com`、`https://opencode.ai/docs/go/`（约 12k markdown） |
+| Search `POST /v2/search`             | 通        | 「北京未来 7 天天气预报」，DDG 回退，5 条                                    |
+| Map `POST /v2/map`                   | 接口通、结果常空 | `https://open-sandbox.ai/` → `links: []`                     |
+| Batch scrape `POST /v2/batch/scrape` | 通        | 首页 200，需再 poll status                                        |
+| Crawl `POST /v2/crawl`               | 链路保留     | 与 batch 共用 queue-worker；本轮未做整站遍历                             |
+| Agent `POST /v2/agent`               | 不通       | 无云端 Extract v3                                               |
+| Extract `POST /v2/extract`           | 不通       | 已关 worker + 无 RabbitMQ                                       |
+| Screenshot / actions / interact      | 不通       | 无 fire-engine                                                |
+| Browser / Monitor / 云控制面             | 不通       | 需托管账户                                                        |
+
+
+
+
+### 能通链路的 curl（无 Auth）
+
+把栈拉起来后（`docker compose up -d`，API 映射 `3002`）：
+
+**1. Health**
+
+```bash
+curl -sS http://127.0.0.1:3002/v0/health/readiness
+```
+
+**2. Scrape**
+
+```bash
+curl -sS http://127.0.0.1:3002/v2/scrape \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","formats":["markdown"]}'
+```
+
+**3. Search**
+
+```bash
+curl -sS http://127.0.0.1:3002/v2/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"北京未来7天天气预报","limit":5}'
+```
+
+**4. Map（接口通，很多站 links 为空）**
+
+```bash
+curl -sS http://127.0.0.1:3002/v2/map \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com"}'
+```
+
+**5. Batch scrape**
+
+```bash
+# 提交
+JOB=$(curl -sS http://127.0.0.1:3002/v2/batch/scrape \
+  -H 'Content-Type: application/json' \
+  -d '{"urls":["https://example.com"],"formats":["markdown"]}')
+echo "$JOB"
+
+# 用返回的 id 查询（把 <id> 换成实际 id）
+curl -sS "http://127.0.0.1:3002/v2/batch/scrape/<id>"
+```
+
+**6. Crawl（链路保留，未做整站实测）**
+
+```bash
+JOB=$(curl -sS http://127.0.0.1:3002/v2/crawl \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","limit":2}')
+echo "$JOB"
+curl -sS "http://127.0.0.1:3002/v2/crawl/<id>"
+```
+
+---
+
+
 
 ## Contributing
 
@@ -894,11 +1109,9 @@ We love contributions! Please read our [Contributing Guide](https://github.com/f
 
 ### Contributors
 
-<a href="https://github.com/firecrawl/firecrawl/graphs/contributors">
-  <img alt="contributors" src="https://contrib.rocks/image?repo=firecrawl/firecrawl"/>
-</a>
-
 ---
+
+
 
 ## License
 
@@ -908,8 +1121,4 @@ This project is primarily licensed under the GNU Affero General Public License v
 
 **It is the sole responsibility of end users to respect websites' policies when scraping.** Users are advised to adhere to applicable privacy policies and terms of use. By default, Firecrawl respects robots.txt directives. By using Firecrawl, you agree to comply with these conditions.
 
-<p align="right" style="font-size: 14px; color: #555; margin-top: 20px;">
-  <a href="#readme-top" style="text-decoration: none; color: #007bff; font-weight: bold;">
-    ↑ Back to Top ↑
-  </a>
-</p>
+**[↑ Back to Top ↑](#readme-top)**
